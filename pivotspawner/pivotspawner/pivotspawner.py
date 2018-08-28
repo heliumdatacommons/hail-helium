@@ -1,4 +1,3 @@
-import jupyterhub
 import tornado.escape
 
 from tornado import gen
@@ -9,51 +8,34 @@ from traitlets import default, Unicode
 from jupyterhub.spawner import Spawner
 
 
-host = '34.207.192.169'
-port = 9191
-
-body = {
-  "id": "hail",
-  "containers": [
-    {
-      "id": "spark-master",
-      "type": "service",
-      "image": "dchampion24/hail",
-      "resources": {
-        "cpus": 2,
-        "mem": 2048
-      },
-      "network_mode": "container",
-      "ports": [
-        {"container_port": 8080},
-        {"container_port": 7077},
-        {"container_port": 8888}
-      ]
-    },
-    {
-      "id": "spark-worker",
-      "type": "service",
-      "image": "heliumdatacommons/spark-worker:hail",
-      "instances": 1,
-      "resources": {
-        "cpus": 2,
-        "mem": 2048
-      },
-      "network_mode": "container",
-      "args": [
-        "@spark-master:7077"
-      ],
-      "env": {
-        "PYSPARK_PYTHON": "/usr/bin/python"
-      }
-    }
-  ]
-}
-
-
 class PivotSpawner(Spawner):
 
-    master_image = Unicode('dchampion24/hail', config=True)
+    app_template = dict(id='hail',
+                        containers=[
+                          dict(id='spark-master',
+                               type='service',
+                               resources=dict(cpus=2, mem=2048),
+                               network_mode='container',
+                               ports=[
+                                 dict(container_port=8080),
+                                 dict(container_port=7077),
+                                 dict(container_port=8888)
+                               ]),
+                          dict(id='spark-worker',
+                               type='service',
+                               image='heliumdatacommons/spark-worker:hail',
+                               resources=dict(cpus=2, mem=2048),
+                               network_mode='container',
+                               args=['@spark-master:7077'],
+                               env={
+                                 'PYSPARK_PYTHON': '/usr/bin/python'
+                               })
+                        ])
+
+    # configurable parameters
+    pivot_host = Unicode(u'', help='Hostname of PIVOT API', config=True)
+    pivot_port = Unicode(9191, help='Port number of PIVOT API', config=True)
+    master_image = Unicode('heliumdatacommons/spark-master:hail', config=True)
 
     # fix default port to 8888, used in the container
     @default('port')
@@ -68,23 +50,23 @@ class PivotSpawner(Spawner):
     def __init__(self, *args, **kwargs):
       super(PivotSpawner, self).__init__(*args, **kwargs)
       self.__cli = AsyncHTTPClient()
-      self.__app_id = body['id']
+      self.__app = dict(self.app_template)
 
     async def get_appliance(self, name):
-      r = await self.__cli.fetch('http://%s:%d/appliance/%s'%(host, port, name), method='GET')
+      r = await self.__cli.fetch('http://%s:%d/appliance/%s'%(self.pivot_host, self.pivot_port, name), method='GET')
       return tornado.escape.json_decode(r.body)
 
     async def submit_appliance(self, app):
       app['id'] = self.user_options.get('name', 'hail')
       try:
-        await self.__cli.fetch('http://%s:%d/appliance'%(host, port), method='POST',
-                                 body=tornado.escape.json_encode(app))
+        await self.__cli.fetch('http://%s:%d/appliance'%(self.pivot_host, self.pivot_port), method='POST',
+                               body=tornado.escape.json_encode(app))
       except:
         pass
 
     async def delete_appliance(self, name):
       try:
-        await self.__cli.fetch('http://%s:%d/appliance/%s'%(host, port, name), method='DELETE')
+        await self.__cli.fetch('http://%s:%d/appliance/%s'%(self.pivot_host, self.pivot_port, name), method='DELETE')
       except:
         pass
 
@@ -96,13 +78,14 @@ class PivotSpawner(Spawner):
       return e['host'], e['host_port']
 
     async def start(self):
-      if (await self.poll()) is None:
-        body['spark-master']['image'] = self.master_image
-        body['spark-master']['env'] = dict(self.get_env())
-        body['spark-master']['args'] = list(self.get_args())
-        await self.submit_appliance(body)
+      app = self.__app
+      if (await self.poll()) == 0:
+        app['spark-master']['image'] = self.master_image
+        app['spark-master']['env'] = dict(self.get_env())
+        app['spark-master']['args'] = list(self.get_args())
+        await self.submit_appliance(app)
       while True:
-        app = await self.get_appliance(body['id'])
+        app = await self.get_appliance(app['id'])
         if self.get_app_status(app) == 'running':
           return self.get_app_endpoint(app)
         gen.sleep(1)
