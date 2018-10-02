@@ -3,7 +3,7 @@ import json
 
 env_to_set = {
   'PYTHONHASHSEED': '0',
-  'PYTHONPATH': os.environ.get('PYTHONPATH'),
+  'PYTHONPATH': '/usr/lib/spark/python:/usr/lib/spark/python/lib/py4j-0.10.7-src.zip:/opt/hail.zip',
   'SPARK_HOME': '/usr/lib/spark/',
   'PYSPARK_PYTHON': '/usr/bin/python3',
   'PYSPARK_DRIVER_PYTHON': '/usr/bin/python3'
