@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 
+
+# tell flask proxy to bind to host port 8088 and proxy to localhost:8888 (jupyter)
+git clone https://github.com/theferrit32/auth-proxy.git /auth-proxy
+cd /auth-proxy
+export FLASK_PORT=8088
+cat > /auth-proxy/config.json <<EOF
+{
+    "flask_port": ${FLASK_PORT},
+    "auth_service_key": "${AUTH_SERVICE_KEY}",
+    "default_proxy_destination": "http://localhost:8888",
+    "whitelist": ${OAUTH_WHITELIST},
+    "validate_url": "https://auth.commonsshare.org/validate_token?provider=auth0&access_token={token}",
+    "auth_url": "https://auth.commonsshare.org/authorize?provider=auth0&scope=openid%20profile%20email"
+}
+EOF
+# workers has to be 1 for in-memory session state
+gunicorn --workers 1 --daemon --bind 0.0.0.0:${FLASK_PORT} \
+  --access-logfile /tmp/auth-proxy-access.log \
+  --error-logfile /tmp/auth-proxy-error.log \
+  proxy:app
+
+
 cat > ${HADOOP_HOME}/etc/hadoop/core-site.xml <<EOF
 <configuration>
 

@@ -19,6 +19,8 @@ RUN apt-get install -y python3-dev \
 ADD spark_conf/spark-env.sh ${SPARK_HOME}/conf/spark-env.sh
 ADD spark_conf/spark-defaults.conf ${SPARK_HOME}/conf/spark-defaults.conf
 
+RUN pip3 install --no-cache-dir flask requests gunicorn
+
 ADD run.sh /sbin/run.sh
 RUN chmod +x /sbin/run.sh
 
